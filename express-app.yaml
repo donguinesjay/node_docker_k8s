@@ -1,0 +1,75 @@
+# to run this deployment, use the following command:
+# kubectl apply -f express-app.yaml
+# check status of pods with:
+# kubectl get pods
+# forward port to localhost with:
+# kubectl port-forward service/up-skill-service 8080:80
+
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: up-skill-deployment
+  labels:
+    app: up-skill
+spec:
+  spec:
+  replicas: 4 
+  # 1. STRATEGY: Define how updates are rolled out
+  strategy:
+    type: RollingUpdate
+    rollingUpdate:
+      maxSurge: 1        # Spins up 1 extra new Pod before killing any old ones
+      maxUnavailable: 0  # Forces Kubernetes to keep all 4 old Pods alive until new ones are ready
+  selector:
+    matchLabels:
+      app: up-skill
+  template:
+    metadata:
+      labels:
+        app: up-skill
+    spec:
+      # 2. STRATEGY: Spread Pods across different physical machines (Nodes)
+      topologySpreadConstraints:
+        - maxSkew: 1
+          topologyKey: "kubernetes.io/hostname"
+          whenUnsatisfiable: ScheduleAnyway
+          labelSelector:
+            matchLabels:
+              app: up-skill
+      containers:
+      - name: up-skill-container
+        image: up-skill-image:latest 
+        imagePullPolicy: IfNotPresent
+        ports:
+        - containerPort: 3000
+        # 3. STRATEGY: Stop traffic to unready or broken Pods
+        readinessProbe:
+          httpGet:
+            path: /
+            port: 3000
+          initialDelaySeconds: 5
+          periodSeconds: 5
+        livenessProbe:
+          httpGet:
+            path: /
+            port: 3000
+          initialDelaySeconds: 15
+          periodSeconds: 10
+        # 4. STRATEGY: Graceful shutdown (Give Express time to finish ongoing requests)
+        lifecycle:
+          preStop:
+            exec:
+              command: ["/bin/sh", "-c", "sleep 10"]
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: up-skill-service
+spec:
+  type: LoadBalancer # Automatically provisions a cloud load balancer if available
+  selector:
+    app: up-skill
+  ports:
+    - protocol: TCP
+      port: 80         # The external port people will visit
+      targetPort: 3000 # The internal port your Express app listens on

@@ -1,0 +1,10 @@
+
+services:
+  up-skill:
+    image: up-skill-image
+    container_name: up-skill-container
+    build: .
+    ports:
+      - "3000:3000"
+    environment:
+      - PORT=3000
